@@ -125,3 +125,4 @@ dmypy.json
 
 *.tar.gz
 checkpoint
+results
