@@ -122,6 +122,9 @@ def validate(wlfw_val_dataloader, pfld_backbone):
 
                 pre_landmark = landmarks[0] * [112, 112]
 
+                cv2.imwrite("show_img.jpg", img_clone)
+                img_clone = cv2.imread("show_img.jpg")
+
                 for (x, y) in pre_landmark.astype(np.int32):
                     cv2.circle(img_clone, (x, y), 1, (255, 0, 0), -1)
 
