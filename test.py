@@ -129,7 +129,7 @@ def validate(wlfw_val_dataloader, pfld_backbone):
                     cv2.circle(img_clone, (x, y), 1, (255, 0, 0), -1)
 
                 if args.save_image:
-                    cv2.imwrite(f"image_{i:03}.jpg", img_clone)
+                    cv2.imwrite(f"results/image_{i:03}.jpg", img_clone)
 
                 if args.show_image:
                     cv2.imshow("show_img.jpg", img_clone)
