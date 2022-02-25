@@ -1,19 +1,20 @@
-import numpy as np
-import cv2
-import sys
-sys.path.append('..')
+import ast
+import random
 
+import cv2
+import numpy as np
 from torch.utils import data
 from torch.utils.data import DataLoader
 
 
 def flip(img, annotation):
+    """flip"""
     img = np.fliplr(img).copy()
     h, w = img.shape[:2]
 
     x_min, y_min, x_max, y_max = annotation[0:4]
     landmark_x = annotation[4::2]
-    landmark_y = annotation[4 + 1::2]
+    landmark_y = annotation[4 + 1 :: 2]
 
     bbox = np.array([w - x_max, y_min, w - x_min, y_max])
     for i in range(len(landmark_x)):
@@ -33,7 +34,7 @@ def flip(img, annotation):
 
 
 def channel_shuffle(img, annotation):
-    if (img.shape[2] == 3):
+    if img.shape[2] == 3:
         ch_arr = [0, 1, 2]
         np.random.shuffle(ch_arr)
         img = img[..., ch_arr]
@@ -41,6 +42,7 @@ def channel_shuffle(img, annotation):
 
 
 def random_noise(img, annotation, limit=[0, 0.2], p=0.5):
+    """random_noise"""
     if random.random() < p:
         H, W = img.shape[:2]
         noise = np.random.uniform(limit[0], limit[1], size=(H, W)) * 255
@@ -88,18 +90,18 @@ def random_hue(image, annotation, hue=0.5):
 
 
 def scale(img, annotation):
+    """scale"""
     f_xy = np.random.uniform(-0.4, 0.8)
     origin_h, origin_w = img.shape[:2]
 
     bbox = annotation[0:4]
     landmark_x = annotation[4::2]
-    landmark_y = annotation[4 + 1::2]
+    landmark_y = annotation[4 + 1 :: 2]
 
     h, w = int(origin_h * f_xy), int(origin_w * f_xy)
-    image = resize(img, (h, w),
-                   preserve_range=True,
-                   anti_aliasing=True,
-                   mode='constant').astype(np.uint8)
+    image = resize(
+        img, (h, w), preserve_range=True, anti_aliasing=True, mode="constant"
+    ).astype(np.uint8)
 
     new_annotation = list()
     for i in range(len(bbox)):
@@ -116,14 +118,13 @@ def scale(img, annotation):
 
 
 def rotate(img, annotation, alpha=30):
-
+    """rotate"""
     bbox = annotation[0:4]
     landmark_x = annotation[4::2]
-    landmark_y = annotation[4 + 1::2]
+    landmark_y = annotation[4 + 1 :: 2]
     center = ((bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2)
     rot_mat = cv2.getRotationMatrix2D(center, alpha, 1)
-    img_rotated_by_alpha = cv2.warpAffine(img, rot_mat,
-                                          (img.shape[1], img.shape[0]))
+    img_rotated_by_alpha = cv2.warpAffine(img, rot_mat, (img.shape[1], img.shape[0]))
 
     point_x = [bbox[0], bbox[2], bbox[0], bbox[2]]
     point_y = [bbox[1], bbox[3], bbox[3], bbox[1]]
@@ -131,10 +132,8 @@ def rotate(img, annotation, alpha=30):
     new_point_x = list()
     new_point_y = list()
     for (x, y) in zip(landmark_x, landmark_y):
-        new_point_x.append(rot_mat[0][0] * x + rot_mat[0][1] * y +
-                           rot_mat[0][2])
-        new_point_y.append(rot_mat[1][0] * x + rot_mat[1][1] * y +
-                           rot_mat[1][2])
+        new_point_x.append(rot_mat[0][0] * x + rot_mat[0][1] * y + rot_mat[0][2])
+        new_point_y.append(rot_mat[1][0] * x + rot_mat[1][1] * y + rot_mat[1][2])
 
     new_annotation = list()
     new_annotation.append(min(new_point_x))
@@ -143,15 +142,15 @@ def rotate(img, annotation, alpha=30):
     new_annotation.append(max(new_point_y))
 
     for (x, y) in zip(landmark_x, landmark_y):
-        new_annotation.append(rot_mat[0][0] * x + rot_mat[0][1] * y +
-                              rot_mat[0][2])
-        new_annotation.append(rot_mat[1][0] * x + rot_mat[1][1] * y +
-                              rot_mat[1][2])
+        new_annotation.append(rot_mat[0][0] * x + rot_mat[0][1] * y + rot_mat[0][2])
+        new_annotation.append(rot_mat[1][0] * x + rot_mat[1][1] * y + rot_mat[1][2])
 
     return img_rotated_by_alpha, new_annotation
 
 
 class WLFWDatasets(data.Dataset):
+    """custome dataset"""
+
     def __init__(self, file_list, transforms=None):
         self.line = None
         self.path = None
@@ -160,7 +159,7 @@ class WLFWDatasets(data.Dataset):
         self.filenames = None
         self.euler_angle = None
         self.transforms = transforms
-        with open(file_list, 'r') as f:
+        with open(file_list, "r") as f:
             self.lines = f.readlines()
 
     def __getitem__(self, index):
@@ -177,16 +176,65 @@ class WLFWDatasets(data.Dataset):
         return len(self.lines)
 
 
-if __name__ == '__main__':
-    file_list = './data/test_data/list.txt'
+class LoadWebcam:
+    """LoadWebcam, for inference"""
+
+    # local webcam dataloader, i.e. `python test.py --source 0`
+    def __init__(self, pipe="0", transforms=None, img_size=112):
+        self.count = -1
+        self.pipe = ast.literal_eval(pipe) if pipe.isnumeric() else pipe
+        self.cap = cv2.VideoCapture(self.pipe)  # video capture object
+        self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 3)  # set buffer size
+        self.transforms = transforms
+        self.img_size = img_size
+
+    def __iter__(self):
+        self.count = -1
+        return self
+
+    def __next__(self):
+        self.count += 1
+        if cv2.waitKey(1) == ord("q"):  # q to quit
+            self.cap.release()
+            cv2.destroyAllWindows()
+            raise StopIteration
+
+        # Read frame
+        ret_val, img0 = self.cap.read()
+        img0 = cv2.flip(img0, 1)  # flip left-right
+
+        # Print
+        assert ret_val, f"Camera Error {self.pipe}"
+        img_path = "webcam.jpg"
+        s = f"webcam {self.count}: "
+        del img_path, s
+        # resize
+        img = cv2.resize(img0, (self.img_size, self.img_size))
+        # Convert
+        # img = img.transpose((2, 0, 1))[::-1]  # HWC to CHW, BGR to RGB
+        img = np.ascontiguousarray(img)
+        if self.transforms:
+            img = self.transforms(img)
+
+        return (img, None, None, None)
+
+    def __len__(self):
+        return 0
+
+
+def main():
+    file_list = "./data/test_data/list.txt"
     wlfwdataset = WLFWDatasets(file_list)
-    dataloader = DataLoader(wlfwdataset,
-                            batch_size=256,
-                            shuffle=True,
-                            num_workers=0,
-                            drop_last=False)
+    dataloader = DataLoader(
+        wlfwdataset, batch_size=256, shuffle=True, num_workers=0, drop_last=False
+    )
     for img, landmark, attribute, euler_angle in dataloader:
         print("img shape", img.shape)
         print("landmark size", landmark.size())
         print("attrbute size", attribute)
         print("euler_angle", euler_angle.size())
+
+
+if __name__ == "__main__":
+
+    main()

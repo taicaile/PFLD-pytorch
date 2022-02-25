@@ -15,7 +15,7 @@ from scipy.integrate import simps
 from torch.utils.data import DataLoader
 from torchvision import transforms
 
-from dataset.datasets import WLFWDatasets
+from dataset.datasets import LoadWebcam, WLFWDatasets
 from models.pfld import PFLDInference
 
 cudnn.benchmark = True
@@ -79,6 +79,7 @@ def compute_nme(preds, target):
 
 
 def compute_auc(errors, failureThreshold, step=0.0001, showCurve=True):
+    """compute_auc"""
     nErrors = len(errors)
     xAxis = list(np.arange(0.0, failureThreshold + step, step))
     ced = [float(np.count_nonzero([errors <= x])) / nErrors for x in xAxis]
@@ -93,7 +94,7 @@ def compute_auc(errors, failureThreshold, step=0.0001, showCurve=True):
     return AUC, failureRate
 
 
-def validate(wlfw_val_dataloader, pfld_backbone):
+def validate(args, wlfw_val_dataloader, pfld_backbone):
     """validate the model"""
     pfld_backbone.eval()
 
@@ -122,17 +123,17 @@ def validate(wlfw_val_dataloader, pfld_backbone):
 
                 pre_landmark = landmarks[0] * [112, 112]
 
-                cv2.imwrite("show_img.jpg", img_clone)
-                img_clone = cv2.imread("show_img.jpg")
+                cv2.imwrite("show_img.png", img_clone)
+                img_clone = cv2.imread("show_img.png")
 
                 for (x, y) in pre_landmark.astype(np.int32):
                     cv2.circle(img_clone, (x, y), 1, (255, 0, 0), -1)
 
                 if args.save_image:
-                    cv2.imwrite(f"results/image_{i:03}.jpg", img_clone)
+                    cv2.imwrite(f"results/image_{i:03}.png", img_clone)
 
                 if args.show_image:
-                    cv2.imshow("show_img.jpg", img_clone)
+                    cv2.imshow("show_img.png", img_clone)
                     cv2.waitKey(0)
 
             nme_temp = compute_nme(landmarks, landmark_gt)
@@ -150,33 +151,82 @@ def validate(wlfw_val_dataloader, pfld_backbone):
         print("inference_cost_time: {0:4f}".format(np.mean(cost_time)))
 
 
+def detect(args, model, dataset):
+    """validate the model"""
+    model.eval()
+    with torch.no_grad():
+        for i, (img, landmark_gt, _, _) in enumerate(dataset):
+            if len(img.shape) == 3:
+                img = img[None]  # expand for batch dim
+            img = img.to(device)
+            model = model.to(device)
+
+            # start_time = time.time()
+            _, landmarks = model(img)
+            # (time.time() - start_time)
+
+            landmarks = landmarks.cpu().numpy()
+            landmarks = landmarks.reshape(landmarks.shape[0], -1, 2)  # landmark
+
+            if args.show_image or args.save_image:
+                img_clone = np.array(np.transpose(img[0].cpu().numpy(), (1, 2, 0)))
+                img_clone = (img_clone * 255).astype(np.uint8)
+                np.clip(img_clone, 0, 255)
+
+                pre_landmark = landmarks[0] * [112, 112]
+
+                cv2.imwrite("show_img.png", img_clone)
+                img_clone = cv2.imread("show_img.png")
+
+                for (x, y) in pre_landmark.astype(np.int32):
+                    cv2.circle(img_clone, (x, y), 1, (255, 0, 0), -1)
+
+                if args.save_image:
+                    cv2.imwrite(f"results/image_{i:03}.png", img_clone)
+
+                if args.show_image:
+                    cv2.imshow("show_img.png", img_clone)
+
+
 def main(args):
     """main"""
     checkpoint = torch.load(args.model_path, map_location=device)
     pfld_backbone = PFLDInference().to(device)
     pfld_backbone.load_state_dict(checkpoint["pfld_backbone"])
 
-    transform = transforms.Compose([transforms.ToTensor()])
-    wlfw_val_dataset = WLFWDatasets(args.test_dataset, transform)
-    wlfw_val_dataloader = DataLoader(
-        wlfw_val_dataset, batch_size=1, shuffle=False, num_workers=0
-    )
+    val_transforms = transforms.Compose([transforms.ToTensor()])
 
-    validate(wlfw_val_dataloader, pfld_backbone)
+    if args.camera:
+        val_dataset = LoadWebcam(transforms=val_transforms)
+        detect(args, pfld_backbone, val_dataset)
+    else:
+        wlfw_val_dataset = WLFWDatasets(args.test_dataset, val_transforms)
+        wlfw_val_dataloader = DataLoader(
+            wlfw_val_dataset, batch_size=1, shuffle=False, num_workers=0
+        )
+
+        validate(args, wlfw_val_dataloader, pfld_backbone)
 
 
 def parse_args():
+    """parse arguments"""
     parser = argparse.ArgumentParser(description="Testing")
     parser.add_argument(
-        "--model_path", default="./checkpoint/snapshot/checkpoint.pth.tar", type=str
+        "--model-path", default="./checkpoint/snapshot/checkpoint.pth.tar", type=str
     )
-    parser.add_argument("--test_dataset", default="./data/test_data/list.txt", type=str)
-    parser.add_argument("--save_image", default=True, type=bool)
-    parser.add_argument("--show_image", default=False, type=bool)
+    parser.add_argument("--test-dataset", default="./data/test_data/list.txt", type=str)
+    parser.add_argument("--save-image", action="store_true", default=True)
+    parser.add_argument("--show-image", action="store_true", default=False)
+    parser.add_argument("--camera", action="store_true", default=False)
     args = parser.parse_args()
     return args
 
 
-if __name__ == "__main__":
+def run():
     args = parse_args()
     main(args)
+
+
+if __name__ == "__main__":
+
+    run()
