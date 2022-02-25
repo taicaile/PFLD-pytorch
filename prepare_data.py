@@ -34,6 +34,8 @@ def rotate(angle, center, landmark):
 
 
 class ImageDate:
+    """ImageDate"""
+
     def __init__(self, line, imgDir, image_size=112):
         self.image_size = image_size
         line = line.strip().split()
@@ -67,6 +69,7 @@ class ImageDate:
         self.boxes = []
 
     def load_data(self, is_train, repeat, mirror=None):
+        """load_data"""
         if mirror is not None:
             with open(mirror, "r") as f:
                 lines = f.readlines()
@@ -159,6 +162,7 @@ class ImageDate:
                 self.landmarks.append(landmark)
 
     def save_data(self, path, prefix):
+        """save_data"""
         attributes = [
             self.pose,
             self.expression,
@@ -196,6 +200,7 @@ class ImageDate:
 
 
 def get_dataset_list(imgDir, outDir, landmarkDir, is_train):
+    """get dataset"""
     with open(landmarkDir, "r") as f:
         lines = f.readlines()
         labels = []
